@@ -271,6 +271,72 @@ export async function pauseConversation(conversationId) {
 }
 
 /**
+ * Marca que a conversa espera uma decisão do Caio (mantém o horário da
+ * primeira vez, que é o que conta para o lembrete).
+ */
+export async function setPendingDecision(conversationId) {
+  const { error } = await supabase
+    .from('conversations')
+    .update({ pending_decision_at: new Date().toISOString() })
+    .eq('id', conversationId)
+    .is('pending_decision_at', null);
+
+  if (error) throw error;
+}
+
+export async function clearPendingDecision(conversationId) {
+  const { error } = await supabase
+    .from('conversations')
+    .update({ pending_decision_at: null })
+    .eq('id', conversationId);
+
+  if (error) throw error;
+}
+
+/**
+ * Conversas esperando decisão do Caio, com o contato junto.
+ */
+export async function getPendingDecisionConversations() {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('*, contact:contacts(*)')
+    .not('pending_decision_at', 'is', null)
+    .order('pending_decision_at', { ascending: true });
+
+  if (error) throw error;
+  return data;
+}
+
+export async function getLastClientMessage(conversationId) {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('content')
+    .eq('conversation_id', conversationId)
+    .eq('sender', 'cliente')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.content ?? null;
+}
+
+/**
+ * Grava um item novo na base de conhecimento (o que a IA aprendeu com uma
+ * decisão do Caio).
+ */
+export async function insertKnowledge({ category, title, content }) {
+  const { data, error } = await supabase
+    .from('knowledge_base')
+    .insert({ category, title, content })
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
  * Mensagens manuais escritas no painel que ainda não foram enviadas.
  */
 export async function getPendingManualMessages() {

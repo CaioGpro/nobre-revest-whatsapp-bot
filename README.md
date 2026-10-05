@@ -66,6 +66,26 @@ registrada no painel e o bot pausa naquela conversa por `pausa_horas` horas
 (tabela `settings`; padrão 24). Mensagens escritas no painel são enviadas
 pelo bot assim que gravadas e também pausam a conversa.
 
+## Decisões do Caio e aprendizado contínuo
+
+Quando a base de conhecimento não responde o que o cliente pediu, a IA **não
+responde o cliente**: o bot manda a pergunta na conversa do Caio com o próprio
+número, com um `ref` no fim. O Caio responde **citando essa mensagem**; o bot
+envia a resposta ao cliente no tom dele e grava um item novo na
+`knowledge_base`, para responder sozinho da próxima vez. Se o Caio preferir
+responder direto ao cliente pelo celular, o bot também aprende com essa
+resposta.
+
+Enquanto a decisão está pendente (`pending_decision_at`), o bot não responde
+naquela conversa e lembra o Caio a cada `lembrete_decisao_horas` horas.
+
+## Configurações (tabela `settings`)
+
+| Chave | Padrão | O que faz |
+|---|---|---|
+| `pausa_horas` | 24 | Quanto tempo o bot fica sem responder numa conversa depois que o Caio responde por conta própria |
+| `lembrete_decisao_horas` | 2 | De quanto em quanto tempo o bot lembra o Caio de uma decisão pendente |
+
 ## Alimentando a base de conhecimento
 
 A tabela `knowledge_base` no Supabase é o que a IA usa para saber preços,

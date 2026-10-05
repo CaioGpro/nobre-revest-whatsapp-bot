@@ -9,6 +9,7 @@ import {
   areJidsSameUser,
   isJidUser,
   isLidUser,
+  jidNormalizedUser,
 } from '@whiskeysockets/baileys';
 
 import { supabase } from './supabase.js';
@@ -19,21 +20,29 @@ import {
   insertMessage,
   messageExists,
   pauseConversation,
+  getSetting,
+  setPendingDecision,
+  clearPendingDecision,
+  getPendingDecisionConversations,
+  getLastClientMessage,
+  insertKnowledge,
   getPendingManualMessages,
   claimManualMessage,
   releaseManualMessage,
   setWhatsappMessageId,
   getConversationJid,
 } from './db.js';
-import { generateReply } from './ai.js';
+import { generateReply, learnFromCaio } from './ai.js';
 
 const AUTO_RESPOND = (process.env.AUTO_RESPOND ?? 'true') === 'true';
 const AUTH_DIR = 'auth_session'; // guarda a sessão do WhatsApp entre reinícios
+const LEMBRETE_HORAS_PADRAO = 2;
 
 const logger = pino({ level: 'info' });
 
 let sock; // conexão atual com o WhatsApp (é recriada a cada reconexão)
 const sentByBot = new Set(); // ids das mensagens que o próprio bot enviou
+const lastNotified = new Map(); // conversa → quando o Caio foi avisado da decisão pendente
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -127,11 +136,15 @@ async function handleMessage(msg) {
   const jid = msg.key.remoteJid;
   // Só conversas 1:1: ignora grupos, status, listas de transmissão e canais.
   if (!jid || !(isJidUser(jid) || isLidUser(jid))) return;
-  // A conversa do Caio com o próprio número fica reservada para comandos.
-  if (isOwnChat(jid)) return;
 
   const text = extractText(msg);
   if (!text) return; // ignora áudios, figurinhas, etc. por enquanto
+
+  // A conversa do Caio com o próprio número é o canal dele com o bot.
+  if (isOwnChat(jid)) {
+    if (msg.key.fromMe && !sentByBot.has(msg.key.id)) await handleCaioChat(msg, text);
+    return;
+  }
 
   if (msg.key.fromMe) {
     await handleOwnMessage(msg, jid, text);
@@ -165,6 +178,10 @@ async function handleOwnMessage(msg, jid, text) {
     whatsappMessageId: msg.key.id,
   });
 
+  // Se a conversa esperava uma decisão, a resposta do Caio ao cliente também
+  // vira conhecimento para a IA.
+  if (conversation.pending_decision_at) await learnAndClear(conversation, text);
+
   const until = await pauseConversation(conversation.id);
   console.log(`[${contactLabel(contact)}] Caio respondeu pelo celular — bot pausado até ${until.toLocaleString('pt-BR')}.`);
 }
@@ -191,27 +208,44 @@ async function handleClientMessage(msg, jids, text) {
     return;
   }
 
-  const reply = await generateReply(conversation.id, text);
-  if (!reply) return;
+  const result = await generateReply(conversation.id, text);
+  if (!result) return;
 
+  // A IA não sabe responder: o cliente fica esperando e a pergunta vai para o
+  // Caio na conversa dele.
+  if (result.type === 'decision') {
+    await setPendingDecision(conversation.id);
+    await notifyCaio(conversation, contact, result.question);
+    console.log(`[${contactLabel(contact)}] pergunta enviada ao Caio — cliente aguardando decisão.`);
+    return;
+  }
+
+  await deliverReply(conversation, contact, msg.key.remoteJid, result.text);
+}
+
+/**
+ * Envia a resposta da IA ao cliente e grava no histórico. Com
+ * AUTO_RESPOND=false, só grava como sugestão não enviada.
+ */
+async function deliverReply(conversation, contact, jid, text) {
   if (!AUTO_RESPOND) {
     await insertMessage({
       conversationId: conversation.id,
       direction: 'saida',
       sender: 'ia',
-      content: reply,
+      content: text,
       sent: false,
     });
     console.log(`[${contactLabel(contact)}] resposta da IA gravada no banco (AUTO_RESPOND=false, não enviada).`);
     return;
   }
 
-  const sent = await sendText(msg.key.remoteJid, reply);
+  const sent = await sendText(jid, text);
   await insertMessage({
     conversationId: conversation.id,
     direction: 'saida',
     sender: 'ia',
-    content: reply,
+    content: text,
     whatsappMessageId: sent.key.id,
   });
   console.log(`[${contactLabel(contact)}] respondido automaticamente pela IA.`);
@@ -220,6 +254,7 @@ async function handleClientMessage(msg, jids, text) {
 function whyBotIsQuiet(conversation) {
   if (conversation.started_by_caio) return 'conversa iniciada pelo Caio';
   if (conversation.status === 'aguardando_humano') return 'aguardando atendimento humano';
+  if (conversation.pending_decision_at) return 'esperando decisão do Caio';
   if (conversation.bot_paused_until && new Date(conversation.bot_paused_until) > new Date()) {
     return 'bot pausado (o Caio assumiu)';
   }
@@ -228,6 +263,106 @@ function whyBotIsQuiet(conversation) {
 
 function contactLabel(contact) {
   return contact.saved_name || contact.name || contact.phone || contact.whatsapp_jid;
+}
+
+async function sendToCaio(text) {
+  return sendText(jidNormalizedUser(sock.user.id), text);
+}
+
+/**
+ * Pergunta ao Caio, na conversa com o próprio número, como responder. O
+ * "ref" no fim identifica a conversa quando ele responde citando a mensagem.
+ */
+async function notifyCaio(conversation, contact, question, { reminder = false } = {}) {
+  const label = contactLabel(contact);
+  const who = contact.phone && label !== contact.phone ? `${label} (${contact.phone})` : label;
+  const header = reminder ? '⏰ *Ainda espero sua decisão*' : '❓ *Preciso da sua decisão*';
+
+  await sendToCaio(
+    `${header} — ${who}\n${question}\n\n` +
+      'Responda *citando esta mensagem* com o que devo dizer. Eu envio ao cliente e guardo para as próximas vezes.\n' +
+      `ref ${conversation.id.slice(0, 8)}`
+  );
+  lastNotified.set(conversation.id, Date.now());
+}
+
+function quotedText(msg) {
+  const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+  return quoted?.conversation || quoted?.extendedTextMessage?.text || null;
+}
+
+/**
+ * Mensagem do Caio na conversa com o próprio número. Por enquanto só conta a
+ * resposta a uma decisão pendente, feita citando a pergunta do bot; o resto
+ * são anotações dele e é ignorado.
+ */
+async function handleCaioChat(msg, text) {
+  const ref = quotedText(msg)?.match(/ref ([0-9a-f]{8})/);
+  if (!ref) return;
+
+  const pending = await getPendingDecisionConversations();
+  const conversation = pending.find((c) => c.id.startsWith(ref[1]));
+  if (!conversation) {
+    await sendToCaio('Essa decisão já foi resolvida.');
+    return;
+  }
+
+  const { contact } = conversation;
+  const learned = await learnAndClear(conversation, text);
+
+  const result = await generateReply(conversation.id, null, { caioAnswer: text });
+  if (result?.type === 'reply') {
+    await deliverReply(conversation, contact, contact.whatsapp_jid, result.text);
+  }
+
+  const sentNote = result?.type === 'reply'
+    ? (AUTO_RESPOND ? 'Respondi o cliente' : 'Resposta gravada no painel (AUTO_RESPOND=false)')
+    : 'Não consegui montar a resposta ao cliente';
+  const learnedNote = learned ? `e aprendi: "${learned.title}"` : 'mas não consegui guardar o aprendizado';
+  await sendToCaio(`✅ ${contactLabel(contact)}: ${sentNote} ${learnedNote}.`);
+}
+
+/**
+ * Tira a conversa da espera e transforma a resposta do Caio em um item da
+ * base de conhecimento. Uma falha ao aprender não impede o resto.
+ */
+async function learnAndClear(conversation, answer) {
+  await clearPendingDecision(conversation.id);
+  lastNotified.delete(conversation.id);
+
+  try {
+    const item = await learnFromCaio(conversation.id, answer);
+    await insertKnowledge(item);
+    console.log(`Aprendido com o Caio: "${item.title}" (${item.category}).`);
+    return item;
+  } catch (err) {
+    logger.error({ err }, 'Erro ao aprender com a resposta do Caio');
+    return null;
+  }
+}
+
+/**
+ * Lembra o Caio das decisões paradas a cada "lembrete_decisao_horas" horas
+ * (tabela settings, padrão 2).
+ */
+async function remindPendingDecisions() {
+  if (!sock?.user) return;
+
+  const hours = Number(await getSetting('lembrete_decisao_horas', LEMBRETE_HORAS_PADRAO));
+  const interval = hours * 60 * 60 * 1000;
+
+  for (const conversation of await getPendingDecisionConversations()) {
+    const last = lastNotified.get(conversation.id) ?? new Date(conversation.pending_decision_at).getTime();
+    if (Date.now() - last < interval) continue;
+
+    const lastMessage = await getLastClientMessage(conversation.id);
+    await notifyCaio(
+      conversation,
+      conversation.contact,
+      `Última mensagem do cliente: "${lastMessage ?? '(sem texto)'}"`,
+      { reminder: true }
+    );
+  }
 }
 
 /**
@@ -272,6 +407,10 @@ function listenForManualMessages() {
 }
 
 listenForManualMessages();
+setInterval(
+  () => remindPendingDecisions().catch((err) => logger.error({ err }, 'Erro ao lembrar decisões pendentes')),
+  10 * 60 * 1000
+);
 startBot().catch((err) => {
   console.error('Erro fatal ao iniciar o bot:', err);
   process.exit(1);

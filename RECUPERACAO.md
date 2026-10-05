@@ -64,6 +64,9 @@ da API de 05/10 (único dia com logs guardados).
 
 Cada item é um commit, com push.
 
+Andamento: Fases 1 e 2 (itens 1–9) escritas; falta testar ao vivo com o
+WhatsApp. Item 10 (comandos) ainda a definir com o Caio.
+
 **Fase 1 — bot seguro para religar** (antes de escanear o QR de novo)
 1. Número e `@lid` como o mesmo contato; preencher `alt_jid` e `saved_name`
    com o que o WhatsApp informa.
