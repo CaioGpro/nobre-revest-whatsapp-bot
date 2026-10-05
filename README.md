@@ -50,12 +50,21 @@ o aparelho pelo próprio WhatsApp.
 ## Como a IA responde
 
 A cada mensagem recebida:
-1. Salva o contato (se novo) e a mensagem na tabela `messages`.
-2. Se a conversa estiver marcada como `aguardando_humano` no painel, a IA
-   **não responde** — fica esperando alguém assumir manualmente.
-3. Caso contrário, monta o contexto com a base de conhecimento
-   (`knowledge_base`) + histórico da conversa, chama o Claude, salva a
+1. Identifica o contato pelo número ou pelo `@lid` (o WhatsApp usa os dois
+   para a mesma pessoa). Contatos marcados como pessoais (`is_personal`) são
+   ignorados: nada é gravado nem respondido.
+2. Salva o contato (se novo) e a mensagem na tabela `messages`.
+3. A IA **não responde** se a conversa estiver como `aguardando_humano`, se
+   foi iniciada pelo Caio (`started_by_caio`) ou se o bot estiver pausado nela
+   (`bot_paused_until`).
+4. Caso contrário, monta o contexto com a base de conhecimento
+   (`knowledge_base`) + as últimas 40 mensagens, chama o Claude, salva a
    resposta gerada e (se `AUTO_RESPOND=true`) envia pelo WhatsApp.
+
+Quando o Caio responde um cliente pelo próprio celular, a mensagem fica
+registrada no painel e o bot pausa naquela conversa por `pausa_horas` horas
+(tabela `settings`; padrão 24). Mensagens escritas no painel são enviadas
+pelo bot assim que gravadas e também pausam a conversa.
 
 ## Alimentando a base de conhecimento
 
