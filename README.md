@@ -41,6 +41,18 @@ A sessão fica salva na pasta `auth_session/` — não é preciso escanear de
 novo nos próximos inícios, a menos que você delete essa pasta ou desconecte
 o aparelho pelo próprio WhatsApp.
 
+## Testar no próprio número
+
+```bash
+npm run teste
+```
+
+No modo de teste, o Caio faz o papel de cliente na conversa com o próprio
+número ("Mensagem para mim" no WhatsApp): o bot responde ali mesmo, e as
+perguntas de decisão também chegam ali — é só responder citando-as. Clientes
+de verdade não recebem nada; as mensagens deles só ficam gravadas. No painel,
+a conversa de teste aparece como "Teste (meu número)".
+
 ## Variáveis de ambiente
 
 | Variável | Descrição |
@@ -50,6 +62,7 @@ o aparelho pelo próprio WhatsApp.
 | `GEMINI_API_KEY` | Chave da API do Gemini para gerar as respostas |
 | `GEMINI_MODEL` | Modelo do Gemini a usar (padrão: `gemini-3.8-flash`) |
 | `AUTO_RESPOND` | `true` para responder automaticamente, `false` para só gravar a sugestão no banco sem enviar |
+| `MODO_TESTE` | `true` para atender só a conversa do Caio com o próprio número (veja acima) |
 
 ## Como a IA responde
 

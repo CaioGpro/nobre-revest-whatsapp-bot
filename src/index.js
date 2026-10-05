@@ -35,6 +35,10 @@ import {
 import { generateReply, learnFromCaio } from './ai.js';
 
 const AUTO_RESPOND = (process.env.AUTO_RESPOND ?? 'true') === 'true';
+// Modo de teste: o bot atende só a conversa do Caio com o próprio número, onde
+// o Caio faz o papel de cliente; mensagens de clientes de verdade só são
+// gravadas.
+const MODO_TESTE = process.env.MODO_TESTE === 'true';
 const AUTH_DIR = 'auth_session'; // guarda a sessão do WhatsApp entre reinícios
 const LEMBRETE_HORAS_PADRAO = 2;
 
@@ -142,7 +146,9 @@ async function handleMessage(msg) {
 
   // A conversa do Caio com o próprio número é o canal dele com o bot.
   if (isOwnChat(jid)) {
-    if (msg.key.fromMe && !sentByBot.has(msg.key.id)) await handleCaioChat(msg, text);
+    if (!msg.key.fromMe || sentByBot.has(msg.key.id)) return;
+    const wasDecision = await handleCaioChat(msg, text);
+    if (!wasDecision && MODO_TESTE) await handleClientMessage(msg, ownJids(), text, { isTest: true });
     return;
   }
 
@@ -186,10 +192,11 @@ async function handleOwnMessage(msg, jid, text) {
   console.log(`[${contactLabel(contact)}] Caio respondeu pelo celular — bot pausado até ${until.toLocaleString('pt-BR')}.`);
 }
 
-async function handleClientMessage(msg, jids, text) {
+async function handleClientMessage(msg, jids, text, { isTest = false } = {}) {
   if (await messageExists(msg.key.id)) return; // já processada
 
-  const contact = await getOrCreateContact(jids, msg.pushName || null);
+  const name = isTest ? 'Teste (meu número)' : msg.pushName || null;
+  const contact = await getOrCreateContact(jids, name);
   if (contact.is_personal) return; // família/amigos: não grava nem responde
 
   const conversation = await getOrCreateOpenConversation(contact.id);
@@ -201,6 +208,11 @@ async function handleClientMessage(msg, jids, text) {
     content: text,
     whatsappMessageId: msg.key.id,
   });
+
+  if (MODO_TESTE && !isTest) {
+    console.log(`[${contactLabel(contact)}] modo teste — mensagem gravada, sem resposta.`);
+    return;
+  }
 
   const quietReason = whyBotIsQuiet(conversation);
   if (quietReason) {
@@ -234,10 +246,11 @@ async function handleClientMessage(msg, jids, text) {
 
 /**
  * Envia a resposta da IA ao cliente e grava no histórico. Com
- * AUTO_RESPOND=false, só grava como sugestão não enviada.
+ * AUTO_RESPOND=false, só grava como sugestão não enviada — exceto na conversa
+ * do Caio com o próprio número (modo de teste), onde enviar não tem risco.
  */
 async function deliverReply(conversation, contact, jid, text) {
-  if (!AUTO_RESPOND) {
+  if (!AUTO_RESPOND && !isOwnChat(jid)) {
     await insertMessage({
       conversationId: conversation.id,
       direction: 'saida',
@@ -278,6 +291,11 @@ async function sendToCaio(text) {
   return sendText(jidNormalizedUser(sock.user.id), text);
 }
 
+// Identificadores do próprio número do Caio (número e @lid).
+function ownJids() {
+  return [sock.user.id, sock.user.lid].filter(Boolean).map(jidNormalizedUser);
+}
+
 /**
  * Pergunta ao Caio, na conversa com o próprio número, como responder. O
  * "ref" no fim identifica a conversa quando ele responde citando a mensagem.
@@ -301,19 +319,19 @@ function quotedText(msg) {
 }
 
 /**
- * Mensagem do Caio na conversa com o próprio número. Por enquanto só conta a
- * resposta a uma decisão pendente, feita citando a pergunta do bot; o resto
- * são anotações dele e é ignorado.
+ * Mensagem do Caio na conversa com o próprio número. Só conta como resposta a
+ * uma decisão pendente quando cita a pergunta do bot; retorna false para o
+ * resto (anotações dele, ou mensagens de teste no MODO_TESTE).
  */
 async function handleCaioChat(msg, text) {
   const ref = quotedText(msg)?.match(/ref ([0-9a-f]{8})/);
-  if (!ref) return;
+  if (!ref) return false;
 
   const pending = await getPendingDecisionConversations();
   const conversation = pending.find((c) => c.id.startsWith(ref[1]));
   if (!conversation) {
     await sendToCaio('Essa decisão já foi resolvida.');
-    return;
+    return true;
   }
 
   const { contact } = conversation;
@@ -324,11 +342,13 @@ async function handleCaioChat(msg, text) {
     await deliverReply(conversation, contact, contact.whatsapp_jid, result.text);
   }
 
+  const wasSent = AUTO_RESPOND || isOwnChat(contact.whatsapp_jid);
   const sentNote = result?.type === 'reply'
-    ? (AUTO_RESPOND ? 'Respondi o cliente' : 'Resposta gravada no painel (AUTO_RESPOND=false)')
+    ? (wasSent ? 'Respondi o cliente' : 'Resposta gravada no painel (AUTO_RESPOND=false)')
     : 'Não consegui montar a resposta ao cliente';
   const learnedNote = learned ? `e aprendi: "${learned.title}"` : 'mas não consegui guardar o aprendizado';
   await sendToCaio(`✅ ${contactLabel(contact)}: ${sentNote} ${learnedNote}.`);
+  return true;
 }
 
 /**
