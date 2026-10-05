@@ -85,6 +85,11 @@ async function startBot() {
       }
     } else if (connection === 'open') {
       logger.info('✅ Conectado ao WhatsApp com sucesso.');
+      // Sem o @lid da própria conta, a conversa do Caio com ele mesmo pode
+      // ser confundida com a de um cliente (o WhatsApp manda o @lid ao conectar).
+      if (!sock.user?.lid) {
+        logger.warn('O WhatsApp ainda não informou o @lid deste número; reinicie o bot se a sua conversa consigo mesmo não for reconhecida.');
+      }
       sendPendingManualMessages().catch((err) =>
         logger.error({ err }, 'Erro ao enviar mensagens manuais pendentes')
       );
@@ -214,7 +219,7 @@ async function handleClientMessage(msg, jids, text, { isTest = false } = {}) {
     return;
   }
 
-  const quietReason = whyBotIsQuiet(conversation);
+  const quietReason = whyBotIsQuiet(conversation, { isTest });
   if (quietReason) {
     console.log(`[${contactLabel(contact)}] ${quietReason} — IA não respondeu.`);
     return;
@@ -273,11 +278,13 @@ async function deliverReply(conversation, contact, jid, text) {
   console.log(`[${contactLabel(contact)}] respondido automaticamente pela IA.`);
 }
 
-function whyBotIsQuiet(conversation) {
-  if (conversation.started_by_caio) return 'conversa iniciada pelo Caio';
+function whyBotIsQuiet(conversation, { isTest = false } = {}) {
+  // Na conversa de teste o Caio faz o papel de cliente, então "conversa
+  // iniciada pelo Caio" e "o Caio assumiu" não se aplicam.
+  if (!isTest && conversation.started_by_caio) return 'conversa iniciada pelo Caio';
   if (conversation.status === 'aguardando_humano') return 'aguardando atendimento humano';
   if (conversation.pending_decision_at) return 'esperando decisão do Caio';
-  if (conversation.bot_paused_until && new Date(conversation.bot_paused_until) > new Date()) {
+  if (!isTest && conversation.bot_paused_until && new Date(conversation.bot_paused_until) > new Date()) {
     return 'bot pausado (o Caio assumiu)';
   }
   return null;
