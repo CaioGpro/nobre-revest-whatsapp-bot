@@ -1,6 +1,6 @@
 # Nobre Revest — bot de WhatsApp + painel do CRM
 
-Bot de atendimento no WhatsApp com IA (Claude) e painel web do CRM, os dois
+Bot de atendimento no WhatsApp com IA (Gemini) e painel web do CRM, os dois
 ligados ao mesmo banco Supabase.
 
 ## Regra mais importante
@@ -11,7 +11,7 @@ de trabalho.
 
 ## Estrutura
 
-- `src/` — bot (Node, Baileys + Anthropic SDK). `npm start` na raiz.
+- `src/` — bot (Node, Baileys + SDK `@google/genai`, API de Interactions). `npm start` na raiz.
 - `whatsapp-bot/` — cópia duplicada do mesmo código do bot (pendente de
   remoção).
 - `painel/` — painel do CRM (React + Vite + Tailwind). `npm run dev` dentro de
@@ -35,5 +35,5 @@ de trabalho.
 ## Segredos
 
 - Nunca commitar `.env` nem `auth_session/`.
-- `SUPABASE_SERVICE_ROLE_KEY` e `ANTHROPIC_API_KEY` ficam como secrets do
+- `SUPABASE_SERVICE_ROLE_KEY` e `GEMINI_API_KEY` ficam como secrets do
   Codespaces (github.com/settings/codespaces).

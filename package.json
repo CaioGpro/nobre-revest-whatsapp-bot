@@ -8,7 +8,7 @@
     "start": "node src/index.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.131.0",
+    "@google/genai": "^2.27.0",
     "@supabase/supabase-js": "^2.45.4",
     "@whiskeysockets/baileys": "^6.7.9",
     "dotenv": "^16.4.5",

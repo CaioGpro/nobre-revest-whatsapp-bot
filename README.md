@@ -1,7 +1,7 @@
 # Nobre Revest — Bot de Atendimento WhatsApp com IA
 
 Conecta ao WhatsApp (via Baileys, não-oficial) e responde clientes
-automaticamente usando IA (Claude), com base numa base de conhecimento
+automaticamente usando IA (Gemini, do Google), com base numa base de conhecimento
 guardada no Supabase. Todo o histórico fica salvo no mesmo banco que o
 painel de conversas (CRM) usa.
 
@@ -16,7 +16,10 @@ computador, numa VPS, ou em um serviço como Railway/Render.
 ## Pré-requisitos
 
 - Node.js 18 ou superior
-- Uma chave de API da Anthropic (Claude) — console.anthropic.com/settings/keys
+- Uma chave de API do Gemini — aistudio.google.com/apikey. No plano grátis o
+  Google pode usar o conteúdo das conversas para melhorar os produtos dele e
+  há um limite diário de chamadas (veja em aistudio.google.com/rate-limit);
+  no plano pago, não.
 - A `service_role key` do projeto Supabase `nobre-revest-crm`
   (Supabase Dashboard → Project Settings → API → service_role, **não** a
   publishable/anon key)
@@ -26,7 +29,8 @@ computador, numa VPS, ou em um serviço como Railway/Render.
 ```bash
 npm install
 cp .env.example .env
-# edite o .env e preencha SUPABASE_SERVICE_ROLE_KEY e ANTHROPIC_API_KEY
+# edite o .env e preencha SUPABASE_SERVICE_ROLE_KEY e GEMINI_API_KEY
+# (ou guarde as duas como secrets do Codespaces)
 npm start
 ```
 
@@ -43,8 +47,8 @@ o aparelho pelo próprio WhatsApp.
 |---|---|
 | `SUPABASE_URL` | URL do projeto Supabase (já preenchido no .env.example) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Chave secreta do Supabase (nunca exponha publicamente) |
-| `ANTHROPIC_API_KEY` | Chave da API da Anthropic para gerar as respostas |
-| `CLAUDE_MODEL` | Modelo do Claude a usar (padrão: `claude-sonnet-5`) |
+| `GEMINI_API_KEY` | Chave da API do Gemini para gerar as respostas |
+| `GEMINI_MODEL` | Modelo do Gemini a usar (padrão: `gemini-3.8-flash`) |
 | `AUTO_RESPOND` | `true` para responder automaticamente, `false` para só gravar a sugestão no banco sem enviar |
 
 ## Como a IA responde
@@ -58,7 +62,7 @@ A cada mensagem recebida:
    foi iniciada pelo Caio (`started_by_caio`) ou se o bot estiver pausado nela
    (`bot_paused_until`).
 4. Caso contrário, monta o contexto com a base de conhecimento
-   (`knowledge_base`) + as últimas 40 mensagens, chama o Claude, salva a
+   (`knowledge_base`) + as últimas 40 mensagens, chama o Gemini, salva a
    resposta gerada e (se `AUTO_RESPOND=true`) envia pelo WhatsApp.
 
 Quando o Caio responde um cliente pelo próprio celular, a mensagem fica

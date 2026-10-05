@@ -195,8 +195,8 @@ export async function messageExists(whatsappMessageId) {
 }
 
 /**
- * Retorna as últimas N mensagens da conversa, em ordem cronológica, no
- * formato esperado pela API da Anthropic (role: 'user' | 'assistant').
+ * Retorna as últimas N mensagens da conversa, em ordem cronológica, como
+ * turnos do cliente (role 'user') e nossos (role 'assistant').
  */
 export async function getConversationHistory(conversationId, limit = 40) {
   // Só o que o cliente de fato viu: sugestões da IA não enviadas
@@ -218,8 +218,8 @@ export async function getConversationHistory(conversationId, limit = 40) {
       content: m.content,
     }));
 
-  // A API da Anthropic espera que a conversa comece por uma mensagem do
-  // cliente; o corte em N mensagens pode começar no meio de uma resposta nossa.
+  // A conversa enviada à IA deve começar por uma mensagem do cliente; o corte
+  // em N mensagens pode começar no meio de uma resposta nossa.
   const firstUser = history.findIndex((m) => m.role === 'user');
   return firstUser === -1 ? [] : history.slice(firstUser);
 }

@@ -208,7 +208,16 @@ async function handleClientMessage(msg, jids, text) {
     return;
   }
 
-  const result = await generateReply(conversation.id, text);
+  let result;
+  try {
+    result = await generateReply(conversation.id, text);
+  } catch (err) {
+    // Ex.: limite diário do plano grátis do Gemini. O cliente não fica
+    // esquecido: a mensagem vai para o Caio decidir.
+    logger.error({ err }, 'Erro ao gerar resposta da IA');
+    const why = err?.status === 429 ? 'limite do plano grátis do Gemini' : 'erro na IA';
+    result = { type: 'decision', question: `A IA não conseguiu responder agora (${why}). O cliente escreveu: "${text}"` };
+  }
   if (!result) return;
 
   // A IA não sabe responder: o cliente fica esperando e a pergunta vai para o
