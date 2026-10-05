@@ -43,15 +43,51 @@ da API de 05/10 (único dia com logs guardados).
 | 12 | Histórico maior para a IA (40 mensagens, antes 20) e não responder duas vezes à mesma mensagem | consultas `limit=40` e por `whatsapp_message_id` + `sender=ia` |
 | 13 | Tom de "atendimento humanizado" no prompt | nome da migration de 02/10; detalhes desconhecidos |
 
-## O que precisa da sua memória
+## Como funcionava (respostas do Caio, 05/10)
 
-- Como o bot decidia que um contato é pessoal (as 54 marcações de 02/10).
-- Quando o bot pausava e por quanto tempo; como o Caio "assumia" a conversa.
-- Regras do follow-up: depois de quanto tempo, quantas vezes, que texto.
-- Como o Caio era avisado das decisões pendentes (mensagem no próprio
-  WhatsApp?).
-- Etapas da ficha do lead e o que era "aviso".
-- O que mudou no painel (telas de leads, materiais, mídias?).
+- **Contatos pessoais:** ao conectar o WhatsApp, o bot analisou 3 meses de
+  conversas e marcou como pessoais os contatos pelo assunto das conversas.
+- **Assumir a conversa:** o Caio respondia pelo celular. Além disso, ele
+  controlava o bot de várias formas pela conversa com o próprio número.
+- **Follow-up:** as regras vão ser configuradas no painel por etapa (ex.:
+  orçamento enviado → mensagem em X dias; visita técnica feita → em Y dias).
+  Essa tela ainda não existia.
+- **Decisões pendentes e aprendizado contínuo:** quando o bot não sabe
+  responder, ele deixa o cliente sem resposta e espera a decisão do Caio. Cada
+  parada vira conhecimento novo, para o bot aprender com cada conversa até
+  conseguir responder tudo sozinho — o roteiro configurado nunca cobre todas
+  as formas de começar uma conversa.
+- **Painel:** ainda tinha pouca coisa nova; o que ele precisa ter vai ser
+  definido depois.
+
+## Roteiro de reconstrução
+
+Cada item é um commit, com push.
+
+**Fase 1 — bot seguro para religar** (antes de escanear o QR de novo)
+1. Número e `@lid` como o mesmo contato; preencher `alt_jid` e `saved_name`
+   com o que o WhatsApp informa.
+2. Contatos pessoais: não grava nem responde.
+3. Mensagem do Caio pelo celular: fica registrada e pausa o bot na conversa
+   (`bot_paused_until`, duração em `settings`).
+4. Conversa iniciada pelo Caio: o bot nunca responde (`started_by_caio`).
+5. Mensagens manuais do painel: o bot envia e marca `sent=true`.
+6. Não responder duas vezes à mesma mensagem; histórico de 40 mensagens.
+
+**Fase 2 — aprendizado contínuo**
+7. Quando não sabe responder: não responde o cliente, marca
+   `pending_decision_at` e pergunta ao Caio na conversa dele.
+8. A resposta do Caio vai para o cliente e vira item da base de conhecimento.
+9. Lembrete quando a decisão fica pendente.
+10. Comandos na conversa do Caio (pausar, retomar, marcar pessoal etc.).
+
+**Fase 3 — vendas**
+11. Ficha do lead (`lead`, com etapa).
+12. A IA envia PDFs da tabela `materials`.
+13. Mídias recebidas no bucket `midias` (fotos para a IA ver).
+14. Classificar contatos pessoais pelo histórico ao conectar.
+
+**Depois:** follow-ups configuráveis no painel e as telas do painel.
 
 ## Pendências encontradas
 
