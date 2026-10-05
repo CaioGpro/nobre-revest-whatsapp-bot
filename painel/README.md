@@ -17,7 +17,7 @@ definiu. Se quiser trocar a senha depois: Supabase Dashboard → Authentication
 
 ```bash
 npm install
-cp .env.example .env   # preencha VITE_SUPABASE_ANON_KEY (Supabase → Project Settings → API)
+cp .env.example .env   # já vem preenchido com URL e chave pública do projeto
 npm run dev
 ```
 
@@ -32,7 +32,7 @@ O Lovable funciona melhor importando um repositório do GitHub. Passos:
    o Lovable "clonar"/importar o código).
 3. Nas variáveis de ambiente do projeto no Lovable, configure
    `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` com os mesmos valores do
-   seu `.env` (são chaves públicas, seguras para expor no frontend).
+   `.env.example` (são chaves públicas, seguras para expor no frontend).
 4. Publique — o painel vai ler e escrever no mesmo banco Supabase que o bot
    do WhatsApp usa, em tempo real.
 
