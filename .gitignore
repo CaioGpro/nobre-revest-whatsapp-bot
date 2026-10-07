@@ -1,3 +1,5 @@
 node_modules/
 auth_session/
 .env
+exports/
+auth_export/
