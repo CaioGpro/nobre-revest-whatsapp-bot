@@ -17,7 +17,6 @@ import {
   makeWASocket,
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
-  Browsers,
   DisconnectReason,
   areJidsSameUser,
   isJidUser,
@@ -149,6 +148,7 @@ async function gravar(sock) {
 
 let sock; // conexão atual (é recriada quando o WhatsApp pede reinício)
 let terminado = false;
+let tentativas = 0; // reconexões após quedas passageiras
 let timerFim;
 
 async function terminar() {
@@ -184,8 +184,8 @@ async function conectar() {
     version,
     auth: state,
     logger: pino({ level: 'silent' }),
-    // O celular só manda o histórico completo para aparelhos "de computador".
-    browser: Browsers.macOS('Desktop'),
+    // Pede ao celular o histórico, como o WhatsApp Web. (Apresentar-se como
+    // computador Mac/Windows para receber tudo faz o WhatsApp recusar a conexão.)
     syncFullHistory: true,
   });
   sock.ev.on('creds.update', saveCreds);
@@ -213,6 +213,9 @@ async function conectar() {
       const code = lastDisconnect?.error?.output?.statusCode;
       // Logo após escanear o QR o WhatsApp pede um reinício da conexão.
       if (code === DisconnectReason.restartRequired) {
+        conectar().catch(falhar);
+      } else if (code !== DisconnectReason.loggedOut && ++tentativas <= 3) {
+        console.log(`Conexão caiu (código ${code}); tentando de novo…`);
         conectar().catch(falhar);
       } else {
         falhar(new Error(`conexão encerrada antes de terminar (código ${code})`));
